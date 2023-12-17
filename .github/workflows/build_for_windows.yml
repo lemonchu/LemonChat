@@ -1,0 +1,46 @@
+name: CMake Project CI For Windows
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        build_type: [Release]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up MSBuild path
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Install Qt5
+      uses: jurplel/install-qt-action@v3.3.0
+      with:
+        version: '5.15.2'
+        arch: ${{ matrix.os == 'windows-latest' && 'win64_msvc2019_64' || 'mac' }}
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -S .
+
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }}     
+
+    - name: Collect dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        $Env:VCINSTALLDIR = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC'
+        windeployqt --no-translations --no-angle --no-opengl-sw build\Release\LemonChat.exe
+
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v4.0.0
+      with:
+        name: lemon-chat-windows
+        path: build\Release
