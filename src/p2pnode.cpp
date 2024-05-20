@@ -2,6 +2,9 @@
 // Created by LemonPig on 2023/12/16.
 //
 
+#include <vector>
+#include <cstring>
+
 #include "p2pnode.h"
 #ifdef _WIN32
 P2PNode::P2PNode() : is_initialized(false), sockfd(INVALID_SOCKET) {
