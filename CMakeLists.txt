@@ -1,35 +1,72 @@
-cmake_minimum_required(VERSION 3.27)
-project(LemonChat)
+cmake_minimum_required(VERSION 3.16)
+project(LemonChat VERSION 2.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+find_package(OpenSSL 3.0 REQUIRED)
+find_package(Threads REQUIRED)
+include(FetchContent)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+set(JSON_Install OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(ftxui
+    URL https://codeload.github.com/ArthurSonzogni/FTXUI/tar.gz/refs/tags/v7.0.3
+    URL_HASH SHA256=e7c62ffe19009759821b4f0f8df7f2a6fb83784c3a9f1477d81f56d3ee723c88)
+FetchContent_Declare(asio
+    URL https://codeload.github.com/chriskohlhoff/asio/tar.gz/refs/tags/asio-1-36-0
+    URL_HASH SHA256=0310a76b27e1854f09f696b30de57dc490b5e1b17faed1eb8c9a2891f956e52b)
+FetchContent_Declare(json
+    URL https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.12.0
+    URL_HASH SHA256=4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187)
+FetchContent_MakeAvailable(ftxui asio json)
 
-if (APPLE)
-    set(CMAKE_PREFIX_PATH "/usr/local/opt/qt@5")
-endif ()
+add_library(lemonchat_core
+    src/crypto.cpp src/storage.cpp src/transport.cpp src/server.cpp src/client.cpp src/model.cpp)
+target_include_directories(lemonchat_core PUBLIC include)
+target_include_directories(lemonchat_core SYSTEM PUBLIC ${asio_SOURCE_DIR}/asio/include)
+target_compile_definitions(lemonchat_core PUBLIC ASIO_STANDALONE ASIO_NO_DEPRECATED)
+target_link_libraries(lemonchat_core PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads nlohmann_json::nlohmann_json)
+if(WIN32)
+    target_compile_definitions(lemonchat_core PUBLIC _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(lemonchat_core PUBLIC ws2_32 mswsock crypt32)
+else()
+    target_compile_definitions(lemonchat_core PUBLIC _FILE_OFFSET_BITS=64)
+endif()
+if(MSVC)
+    target_compile_options(lemonchat_core PUBLIC /utf-8 PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(lemonchat_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_executable(lemonchat main.cpp src/tui.cpp)
+target_link_libraries(lemonchat PRIVATE lemonchat_core ftxui::component ftxui::dom ftxui::screen)
+if(MSVC)
+    target_compile_options(lemonchat PRIVATE /W4 /permissive-)
+elseif(MINGW)
+    target_link_options(lemonchat PRIVATE -municode)
+else()
+    target_compile_options(lemonchat PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+install(TARGETS lemonchat RUNTIME DESTINATION bin)
 
-find_package(Qt5 COMPONENTS
-        Core
-        Gui
-        Widgets
-        REQUIRED)
-
-include_directories(include)
-
-add_executable(LemonChat
-        main.cpp
-        include/chatbox.h
-        include/chatenv.h
-        include/p2pnode.h
-        src/p2pnode.cpp
-        src/chatbox.cpp
-        src/chatenv.cpp
-)
-target_link_libraries(LemonChat
-        Qt5::Core
-        Qt5::Gui
-        Qt5::Widgets
-)
-
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+    add_executable(core_tests tests/core_tests.cpp)
+    target_link_libraries(core_tests PRIVATE lemonchat_core)
+    add_test(NAME core COMMAND core_tests)
+    add_test(NAME integration COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:lemonchat>)
+    set_tests_properties(integration PROPERTIES TIMEOUT 180)
+    if(UNIX)
+        add_test(NAME terminal COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/terminal.py $<TARGET_FILE:lemonchat>)
+        set_tests_properties(terminal PROPERTIES TIMEOUT 90)
+    endif()
+endif()

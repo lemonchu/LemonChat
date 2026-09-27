@@ -10,3 +10,10 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 build
+/build*/
+/package/
+*.zip
+*.exe
+__pycache__/
+*.pyc
+.lemonchat/
