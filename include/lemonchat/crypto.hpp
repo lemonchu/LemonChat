@@ -1,10 +1,11 @@
 #pragma once
-#include "common.hpp"
 #include <openssl/evp.h>
 #include <openssl/x509.h>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <vector>
+#include <string>
 
 namespace lemon {
 std::string random_hex(std::size_t bytes = 16);

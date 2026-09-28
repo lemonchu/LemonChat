@@ -41,11 +41,10 @@ void Model::apply(const Json& event) {
         for (const auto& item : event.at("conversations")) {
             const std::string id = item.at("id");
             auto& conversation = conversations[id];
-            conversation.id = id; conversation.name = terminal_text(item.at("name"));
+            conversation.name = terminal_text(item.at("name"));
             conversation.direct = item.at("direct"); conversation.joined = true;
-            conversation.members = item.at("members").get<std::vector<std::string>>();
-            if (conversation.direct) for (const auto& member : conversation.members)
-                if (member != self) conversation.name = peer_name(member);
+            if (conversation.direct) for (const auto& member : item.at("members"))
+                if (member != self) conversation.name = peer_name(member.get<std::string>());
         }
         if (!conversations.count(active) && !conversations.empty()) select(conversations.begin()->first);
         for (auto it = conversations.begin(); it != conversations.end();)
@@ -56,9 +55,8 @@ void Model::apply(const Json& event) {
     else if (type == "message" || type == "message_pending") {
         const std::string id = event.at("conversation");
         auto& conversation = conversations[id];
-        conversation.id = id;
         const auto request = event.value("request", "");
-        MessageView message{event.value("id", request), request, event.value("sender", ""),
+        MessageView message{request, event.value("sender", ""),
             terminal_text(event.value("name", "")), terminal_text(event.value("text", "")),
             type == "message_pending" ? "pending" : "sent", event.value("time", now_ms())};
         bool replaced = false;
@@ -83,7 +81,7 @@ void Model::apply(const Json& event) {
         const std::string id = event.at("offer");
         auto& file = transfers[id];
         file.id = id; file.offer = id; file.is_offer = true; file.incoming = type == "file_offer";
-        file.conversation = event.value("conversation", ""); file.filename = terminal_text(event.at("filename"));
+        file.filename = terminal_text(event.at("filename"));
         file.size = event.at("size"); file.status = file.incoming ? "offered" : "waiting";
         file.started = now_ms(); file.peer = terminal_text(event.value("name", "Room members"));
         if (file.incoming) status = "File offered: " + file.filename + " — open Files to accept or decline";
@@ -94,7 +92,7 @@ void Model::apply(const Json& event) {
         auto& file = transfers[id];
         file.id = id; file.offer = oid; file.is_offer = false; file.incoming = event.value("direction", "in") == "in";
         file.filename = terminal_text(event.at("filename")); file.size = event.at("size");
-        file.conversation = event.value("conversation", ""); file.status = "transferring"; file.started = now_ms();
+        file.status = "transferring"; file.started = now_ms();
         file.peer = file.incoming ? peer_name(event.value("sender", "")) : terminal_text(event.value("receiver_name", ""));
         file.path = event.value("path", "");
         if (transfers.count(oid) && transfers[oid].incoming) transfers[oid].status = "accepted";
@@ -124,8 +122,8 @@ void Model::apply(const Json& event) {
     while (transfers.size() > 512) {
         auto oldest = transfers.end();
         for (auto it = transfers.begin(); it != transfers.end(); ++it) {
-            const auto& status = it->second.status;
-            if (status != "complete" && status != "cancelled" && status != "declined" && status != "closed" && status != "failed") continue;
+            const auto& file_status = it->second.status;
+            if (file_status != "complete" && file_status != "cancelled" && file_status != "declined" && file_status != "closed" && file_status != "failed") continue;
             if (oldest == transfers.end() || it->second.started < oldest->second.started) oldest = it;
         }
         if (oldest == transfers.end()) break;

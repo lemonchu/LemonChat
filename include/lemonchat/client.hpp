@@ -13,7 +13,6 @@ struct ClientOptions {
 class Client {
 public:
     Client(asio::io_context& io, ClientOptions options, EventSink sink);
-    ~Client();
     void connect();
     void command(Json value);
     void close();

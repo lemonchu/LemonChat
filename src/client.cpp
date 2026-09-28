@@ -9,7 +9,6 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
     struct Source {
         fs::path path;
         std::uint64_t size = 0;
-        std::string conversation, filename;
     };
     struct Outgoing {
         Source source;
@@ -21,7 +20,7 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
         std::chrono::steady_clock::time_point progress{};
     };
     struct Incoming {
-        std::string id, offer, filename, conversation;
+        std::string id, offer, filename;
         std::uint64_t size = 0, received = 0;
         std::unique_ptr<IncomingFile> file;
         Sha256 hash;
@@ -128,11 +127,7 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
                 const auto id = string_field(value, "offer", 32);
                 connection->send(Json{{"type", "file_decline"}, {"offer", id}});
             } else if (type == "file_cancel") {
-                const auto id = string_field(value, "transfer", 32);
-                connection->send(Json{{"type", "file_cancel"}, {"transfer", id}});
-                incoming.erase(id); outgoing.erase(id);
-                schedule_pump();
-                emit({{"type", "file_cancelled"}, {"transfer", id}, {"reason", "Cancelled locally"}});
+                cancel_transfer(string_field(value, "transfer", 32), "Cancelled locally");
             } else if (type == "message") {
                 const auto conversation = string_field(value, "conversation", 64);
                 const auto text = string_field(value, "text", max_text);
@@ -155,7 +150,7 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
         if (!safe_filename(filename)) throw std::runtime_error("Unsupported file name");
         const auto conversation = string_field(value, "conversation", 64);
         const auto id = random_hex();
-        sources.emplace(id, Source{path, size, conversation, filename});
+        sources.emplace(id, Source{path, size});
         connection->send(Json{{"type", "file_offer"}, {"offer", id}, {"conversation", conversation},
                               {"filename", filename}, {"size", size}});
         emit({{"type", "file_queued"}, {"offer", id}, {"conversation", conversation}, {"filename", filename},
@@ -177,20 +172,20 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
         }
         auto item = std::make_shared<Incoming>();
         item->offer = id; item->filename = filename; item->size = size;
-        item->conversation = string_field(found->second, "conversation", 64);
+        (void)string_field(found->second, "conversation", 64);
         item->file = std::make_unique<IncomingFile>(destination);
         accepted.emplace(id, item);
         connection->send(Json{{"type", "file_accept"}, {"offer", id}});
         emit({{"type", "file_accepting"}, {"offer", id}, {"path", destination.u8string()}});
     }
     void progress(const std::string& id, const std::string& offer, std::uint64_t done, std::uint64_t size,
-                  std::chrono::steady_clock::time_point& last, bool force = false) {
+                  std::chrono::steady_clock::time_point& last) {
         const auto now = std::chrono::steady_clock::now();
-        if (!force && done != size && now - last < std::chrono::milliseconds(100)) return;
+        if (done != size && now - last < std::chrono::milliseconds(100)) return;
         last = now;
         emit({{"type", "file_progress"}, {"transfer", id}, {"offer", offer}, {"done", done}, {"size", size}});
     }
-    void fail_transfer(const std::string& id, const std::string& reason) {
+    void cancel_transfer(const std::string& id, const std::string& reason) {
         if (connection && !connection->closed()) connection->send(Json{{"type", "file_cancel"}, {"transfer", id}});
         incoming.erase(id); outgoing.erase(id);
         schedule_pump();
@@ -251,7 +246,7 @@ void Client::Impl::begin(const Json& value) {
             incoming.emplace(id, item);
             auto event = value; event["direction"] = "in"; event["path"] = item->file->path().u8string(); emit(event);
         }
-    } catch (const std::exception& error) { accepted.erase(oid); fail_transfer(id, error.what()); }
+    } catch (const std::exception& error) { accepted.erase(oid); cancel_transfer(id, error.what()); }
 }
 void Client::Impl::pump(const std::shared_ptr<Outgoing>& item) {
     try {
@@ -278,7 +273,7 @@ void Client::Impl::pump(const std::shared_ptr<Outgoing>& item) {
             item->ended = true;
             connection->send(Json{{"type", "file_end"}, {"transfer", item->id}, {"sha256", item->hash.finish()}});
         }
-    } catch (const std::exception& error) { fail_transfer(item->id, error.what()); }
+    } catch (const std::exception& error) { cancel_transfer(item->id, error.what()); }
 }
 void Client::Impl::binary(Packet packet) {
     const auto chunk = parse_chunk(packet);
@@ -293,7 +288,7 @@ void Client::Impl::binary(Packet packet) {
         item->received += chunk.size;
         connection->send(Json{{"type", "file_ack"}, {"transfer", item->id}, {"offset", item->received}});
         progress(item->id, item->offer, item->received, item->size, item->progress);
-    } catch (const std::exception& error) { fail_transfer(item->id, error.what()); }
+    } catch (const std::exception& error) { cancel_transfer(item->id, error.what()); }
 }
 void Client::Impl::receive(const Json& value) {
     const auto type = string_field(value, "type", 32);
@@ -332,7 +327,7 @@ void Client::Impl::receive(const Json& value) {
             connection->send(Json{{"type", "file_done"}, {"transfer", id}, {"sha256", actual}});
             emit({{"type", "file_saved"}, {"transfer", id}, {"offer", item->offer},
                 {"path", item->file->path().u8string()}, {"sha256", actual}, {"size", item->size}});
-        } catch (const std::exception& error) { fail_transfer(id, error.what()); }
+        } catch (const std::exception& error) { cancel_transfer(id, error.what()); }
         return;
     } else if (type == "file_complete" || type == "file_cancelled") {
         const auto id = string_field(value, "transfer", 32);
@@ -350,14 +345,13 @@ void Client::Impl::receive(const Json& value) {
         }
         if (value.contains("transfer")) {
             const auto id = string_field(value, "transfer", 32);
-            fail_transfer(id, value.value("message", "Transfer rejected"));
+            cancel_transfer(id, value.value("message", "Transfer rejected"));
         }
     }
     emit(value);
 }
 Client::Client(asio::io_context& io, ClientOptions options, EventSink events)
     : impl_(std::make_shared<Impl>(io, std::move(options), std::move(events))) {}
-Client::~Client() = default;
 void Client::connect() { impl_->connect(); }
 void Client::command(Json value) { impl_->command(std::move(value)); }
 void Client::close() { impl_->close(); }

@@ -53,6 +53,7 @@ int main() {
         check(std::distance(fs::directory_iterator(directory), fs::directory_iterator{}) == 1, "Aborted temporary cleaned up");
         {
             IncomingFile file(destination); file.write("original", 8); file.commit();
+            rejects([&] { file.commit(); });
         }
         check(read(destination) == "original", "Atomic file content");
         rejects([&] { IncomingFile file(destination); });

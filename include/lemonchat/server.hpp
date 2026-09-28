@@ -12,8 +12,7 @@ struct ServerOptions {
 };
 class Server {
 public:
-    Server(asio::io_context& io, Identity identity, ServerOptions options, EventSink events = {});
-    ~Server();
+    Server(asio::io_context& io, Identity identity, ServerOptions options);
     void start();
     void stop();
     Invitation invitation() const;

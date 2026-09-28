@@ -17,7 +17,6 @@ public:
 private:
     std::filesystem::path destination_, temporary_;
     std::FILE* file_ = nullptr;
-    bool committed_ = false;
 };
 void private_directory(const std::filesystem::path& path);
 void write_new_file(const std::filesystem::path& path, const std::string& content);

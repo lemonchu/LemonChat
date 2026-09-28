@@ -66,7 +66,7 @@ void IncomingFile::write(const void* data, std::size_t size) {
     if (!file_ || std::fwrite(data, 1, size, file_) != size) throw file_error("Write file");
 }
 void IncomingFile::commit() {
-    if (!file_ || committed_) throw std::runtime_error("File is already closed");
+    if (!file_) throw std::runtime_error("File is already closed");
     if (std::fflush(file_) != 0) throw file_error("Flush file");
 #ifdef _WIN32
     if (_commit(_fileno(file_)) != 0) throw file_error("Sync file");
@@ -82,7 +82,6 @@ void IncomingFile::commit() {
 #else
     if (::link(temporary_.c_str(), destination_.c_str()) != 0) throw file_error("Publish file without overwriting");
 #endif
-    committed_ = true;
 }
 void private_directory(const fs::path& path) {
     fs::create_directories(path);

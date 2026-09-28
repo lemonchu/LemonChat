@@ -1,7 +1,6 @@
 #include "lemonchat/server.hpp"
 #include <map>
 #include <set>
-#include <unordered_map>
 #include <deque>
 
 namespace lemon {
@@ -34,10 +33,8 @@ struct Server::Impl : std::enable_shared_from_this<Server::Impl> {
         std::string hash;
         std::chrono::steady_clock::time_point updated = std::chrono::steady_clock::now();
     };
-    asio::io_context& io;
     Identity identity;
     ServerOptions options;
-    EventSink events;
     asio::ssl::context tls{asio::ssl::context::tls_server};
     Tcp::acceptor acceptor;
     asio::steady_timer timer;
@@ -47,9 +44,8 @@ struct Server::Impl : std::enable_shared_from_this<Server::Impl> {
     std::map<std::string, std::shared_ptr<Offer>> offers;
     std::map<std::string, std::shared_ptr<Transfer>> transfers;
 
-    Impl(asio::io_context& context, Identity credentials, ServerOptions settings, EventSink sink)
-        : io(context), identity(std::move(credentials)), options(std::move(settings)), events(std::move(sink)),
-          acceptor(io), timer(io) {
+    Impl(asio::io_context& context, Identity credentials, ServerOptions settings)
+        : identity(std::move(credentials)), options(std::move(settings)), acceptor(context), timer(context) {
         configure_tls(tls);
         tls.use_certificate_chain(asio::buffer(identity.certificate));
         tls.use_private_key(asio::buffer(identity.private_key), asio::ssl::context::pem);
@@ -99,22 +95,22 @@ struct Server::Impl : std::enable_shared_from_this<Server::Impl> {
         peer->connection->on_chunk = [weak, id](Packet packet) {
             if (auto self = weak.lock()) self->binary(id, std::move(packet));
         };
-        peer->connection->on_close = [weak, id](const std::string& reason) {
-            if (auto self = weak.lock()) self->drop(id, reason);
+        peer->connection->on_close = [weak, id](const std::string&) {
+            if (auto self = weak.lock()) self->drop(id);
         };
         peer->connection->start(true);
     }
     void state(bool validate_only = false) {
         Json peers = Json::array(), rooms = Json::array();
-        std::vector<std::shared_ptr<Session>> recipients;
         std::vector<std::pair<std::shared_ptr<Session>, Packet>> packets;
         for (const auto& item : sessions) if (!item.second->name.empty()) {
             peers.push_back({{"id", item.first}, {"name", item.second->name}});
-            recipients.push_back(item.second);
         }
         for (const auto& item : conversations) if (!item.second.direct)
             rooms.push_back({{"id", item.first}, {"name", item.second.name}, {"count", item.second.members.size()}});
-        for (const auto& peer : recipients) {
+        for (const auto& entry : sessions) {
+            const auto& peer = entry.second;
+            if (peer->name.empty()) continue;
             Json joined = Json::array();
             for (const auto& item : conversations) if (item.second.members.count(peer->id)) {
                 const auto& conversation = item.second;
@@ -147,7 +143,6 @@ struct Server::Impl : std::enable_shared_from_this<Server::Impl> {
         peer->connection->send(Json{{"type", "welcome"}, {"self", peer->id}, {"name", name},
             {"version", protocol_version}, {"max_file", options.max_file}});
         state();
-        if (events) events({{"type", "peer_joined"}, {"name", name}});
     }
     void receive(const std::string& id, const Json& value) {
         auto peer = session(id);
@@ -256,7 +251,7 @@ struct Server::Impl : std::enable_shared_from_this<Server::Impl> {
     void cancel_transfer(const std::string& id, const std::string& reason);
     void cancel_offer(const std::string& id, const std::string& reason);
     void cleanup_offer(const std::string& id);
-    void drop(const std::string& id, const std::string& reason);
+    void drop(const std::string& id);
     void maintenance();
     void stop();
 };
@@ -396,7 +391,7 @@ void Server::Impl::cleanup_offer(const std::string& id) {
     offers.erase(found);
     send(sender, {{"type", "file_offer_closed"}, {"offer", id}, {"reason", "All recipients finished or declined"}});
 }
-void Server::Impl::drop(const std::string& id, const std::string& reason) {
+void Server::Impl::drop(const std::string& id) {
     const auto peer = session(id);
     if (!peer) return;
     sessions.erase(id);
@@ -414,10 +409,7 @@ void Server::Impl::drop(const std::string& id, const std::string& reason) {
         if (it->second.direct && it->second.members.size() < 2) it = conversations.erase(it);
         else ++it;
     }
-    if (!stopped && !peer->name.empty()) {
-        if (events) events({{"type", "peer_left"}, {"name", peer->name}, {"reason", reason}});
-        state();
-    }
+    if (!stopped && !peer->name.empty()) state();
 }
 void Server::Impl::maintenance() {
     timer.expires_after(std::chrono::seconds(5));
@@ -453,9 +445,8 @@ void Server::Impl::stop() {
     for (const auto& peer : peers) peer->connection->close("Server stopped");
     transfers.clear(); offers.clear(); sessions.clear();
 }
-Server::Server(asio::io_context& io, Identity identity, ServerOptions options, EventSink events)
-    : impl_(std::make_shared<Impl>(io, std::move(identity), std::move(options), std::move(events))) {}
-Server::~Server() = default;
+Server::Server(asio::io_context& io, Identity identity, ServerOptions options)
+    : impl_(std::make_shared<Impl>(io, std::move(identity), std::move(options))) {}
 void Server::start() { impl_->start(); }
 void Server::stop() { impl_->stop(); }
 Invitation Server::invitation() const { return impl_->invitation(); }

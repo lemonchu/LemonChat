@@ -1,7 +1,6 @@
 """Process and independent TLS peer helpers shared by integration/terminal tests."""
 import hashlib
 import json
-import os
 from pathlib import Path
 import queue
 import socket
@@ -20,7 +19,6 @@ class Process:
                                         encoding="utf-8", bufsize=1)
         self.queue = queue.Queue()
         self.pending = []
-        self.history = []
         self.errors = []
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.error_reader = threading.Thread(target=self._errors, daemon=True)
@@ -55,7 +53,6 @@ class Process:
                 event = self.queue.get(timeout=max(0, deadline - time.monotonic()))
             except queue.Empty:
                 raise AssertionError(f"Timed out waiting for {kind} {fields}; pending={self.pending[-8:]}; stderr={self.errors}") from None
-            self.history.append(event)
             if matches(event):
                 return event
             self.pending.append(event)

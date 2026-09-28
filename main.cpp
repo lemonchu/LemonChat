@@ -4,6 +4,7 @@
 #include <csignal>
 #include <iostream>
 #include <mutex>
+#include <vector>
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
@@ -14,7 +15,7 @@
 namespace {
 using namespace lemon;
 void usage() {
-    std::cout << R"(LemonChat 2.0.0 — encrypted terminal conversations and file transfers
+    std::cout << "LemonChat " << LEMONCHAT_VERSION << R"( — encrypted terminal conversations and file transfers
 
 Usage:
   lemonchat                              Interactive launch form
@@ -71,13 +72,7 @@ int run(const std::vector<std::string>& arguments) {
             return arguments[i];
         };
         if (arg == "--help" || arg == "-h") { usage(); return 0; }
-        if (arg == "--version") { std::cout << "LemonChat 2.0.0\n"; return 0; }
-        if (arg == "--render-demo") {
-            const auto width = number(value(), 300);
-            const auto height = number(value(), 100);
-            if (width < 60 || height < 15) throw std::runtime_error("Demo size must be at least 60 x 15");
-            std::cout << render_demo(static_cast<int>(width), static_cast<int>(height)) << '\n'; return 0;
-        }
+        if (arg == "--version") { std::cout << "LemonChat " << LEMONCHAT_VERSION << '\n'; return 0; }
         if (arg == "host" || arg == "join" || arg == "serve") {
             if (!mode.empty()) throw std::runtime_error("Choose only one mode");
             mode = arg;
@@ -104,7 +99,6 @@ int run(const std::vector<std::string>& arguments) {
         asio::io_context io;
         Server server(io, load_identity(options.data_directory / "host"), options.server);
         const auto invitation = server.invitation().str();
-        Invitation::parse(invitation);
         Json ready{{"type", "ready"}, {"invitation", invitation}, {"port", server.invitation().port}};
         if (!ready_file.empty()) write_new_file(ready_file, ready.dump() + "\n");
         asio::signal_set signals(io, SIGINT, SIGTERM);
@@ -135,7 +129,6 @@ int run(const std::vector<std::string>& arguments) {
             application.command(std::move(command));
         } catch (const std::exception& error) { emit({{"type", "error"}, {"message", error.what()}}); }
     }
-    application.stop();
     return 0;
 }
 int entry(const std::vector<std::string>& arguments) {

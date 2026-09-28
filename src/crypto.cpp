@@ -1,12 +1,14 @@
 #include "lemonchat/crypto.hpp"
+#include "lemonchat/common.hpp"
 #include "lemonchat/storage.hpp"
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
 #include <openssl/ec.h>
+#include <cctype>
 #include <fstream>
 #include <regex>
-#include <sstream>
+#include <vector>
 
 namespace lemon {
 namespace {

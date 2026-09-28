@@ -1,6 +1,5 @@
 """Exercise the actual full-screen interface through a pseudo-terminal."""
 import fcntl
-import json
 import os
 from pathlib import Path
 import pty
@@ -106,7 +105,7 @@ class UI(unittest.TestCase):
     def client(self, name):
         process = Process(BINARY, "join", "--headless", "--name", name, "--invite", self.invite, "--data-dir", self.root / name)
         self.processes.append(process)
-        process.id = process.wait("welcome")["self"]
+        process.wait("welcome")
         return process
 
     def tui(self, *args):

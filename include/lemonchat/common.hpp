@@ -22,11 +22,10 @@ inline std::int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
-inline std::string string_field(const Json& value, const char* key, std::size_t limit = 256,
-                                bool allow_empty = false) {
+inline std::string string_field(const Json& value, const char* key, std::size_t limit = 256) {
     if (!value.contains(key) || !value[key].is_string()) throw std::runtime_error(std::string("Missing text field: ") + key);
     auto result = value[key].get<std::string>();
-    if ((!allow_empty && result.empty()) || result.size() > limit)
+    if (result.empty() || result.size() > limit)
         throw std::runtime_error(std::string("Invalid length: ") + key);
     return result;
 }

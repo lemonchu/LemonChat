@@ -6,18 +6,17 @@
 
 namespace lemon {
 struct MessageView {
-    std::string id, request, sender, name, text, status;
+    std::string request, sender, name, text, status;
     std::int64_t time = 0;
 };
 struct ConversationView {
-    std::string id, name, draft;
+    std::string name, draft;
     bool direct = false, joined = false;
-    std::vector<std::string> members;
     std::deque<MessageView> messages;
     std::size_t unread = 0;
 };
 struct TransferView {
-    std::string id, offer, conversation, filename, path, peer, status, detail;
+    std::string id, offer, filename, path, peer, status, detail;
     std::uint64_t size = 0, done = 0;
     bool incoming = false, is_offer = false;
     std::int64_t started = 0;

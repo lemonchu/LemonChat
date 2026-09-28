@@ -1,10 +1,10 @@
 #include "lemonchat/tui.hpp"
+#include "lemonchat/model.hpp"
 #include "lemonchat/storage.hpp"
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/app.hpp>
 #include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/screen.hpp>
 #include <ftxui/screen/terminal.hpp>
 #include <ctime>
 #include <iomanip>
@@ -501,22 +501,4 @@ int run_tui(AppOptions options, bool launch_form) {
     return Terminal(std::move(options), launch_form).run();
 }
 
-std::string render_demo(int width, int height) {
-    using namespace ftxui;
-    auto screen = Screen::Create(Dimension::Fixed(width), Dimension::Fixed(height));
-    auto document = vbox({hbox({text(" LEMONCHAT ") | bold | color(accent), text("/ lemon") | dim, filler(), text("● connected ") | color(accent)}),
-        text(" Chat   Files   Rooms   Help"), separator(),
-        hbox({vbox({text(" CONVERSATIONS") | bold, separator(), text(" > #lobby") | color(accent),
-            text("   #design [2]"), text("   @alice"), filler()}) | size(WIDTH, EQUAL, 22), separator(),
-            vbox({text(" #lobby") | bold | color(accent), separator(), text(" Find: Search this conversation") | dim,
-                separator(), message_element({"1", "", "alice", "alice", "Welcome! A single conversation model for rooms and private chats.", "sent", 1700000000000}, "lemon"),
-                message_element({"2", "", "lemon", "lemon", "你好！Files are offered here; every recipient chooses whether to accept.", "sent", 1700000060000}, "lemon"),
-                filler(), separator(), text(" Message or /help") | border, text(" [ Send ]  [ Send file ]  [ Leave room ]"),
-                text(" Enter send | Ctrl+N newline | PgUp/PgDn history") | dim}) | flex,
-            separator(), vbox({text(" ONLINE") | bold, text(" Enter: private chat") | dim, separator(),
-                text(" alice"), text(" bob"), filler()}) | size(WIDTH, EQUAL, 21)}) | flex,
-        separator(), text(" Connected · TLS 1.3 · host is trusted"), text(" Tab navigate · F1 help · F2 rooms · F3 files · Ctrl+Q quit") | dim}) | border;
-    Render(screen, document);
-    return screen.ToString();
-}
 } // namespace lemon
